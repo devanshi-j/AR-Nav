@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>AR + Map + Hidden SVG + Multiple Markers</title>
+
+    <!-- A-Frame -->
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+
+    <!-- Three.js & MindAR -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-three.prod.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-three.prod.css" />
+
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <!-- Choices.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        height: 100vh;
+      }
+
+      #ar-container {
+        width: 100vw;
+        height: 100vh;
+        position: relative;
+      }
+
+      #routing-ui {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        right: 10px;
+        z-index: 999;
+        background: white;
+        padding: 20px;
+        height: 120px;
+        border-radius: 20px;
+        pointer-events: auto;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.25);
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 15px;
+      }
+
+      #destinationDropdown {
+        width: 300px;
+      }
+
+      #routing-ui button {
+        padding: 12px 20px;
+        font-size: 16px;
+        background-color: #1976d2;
+        color: white;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+
+      #routing-ui button:hover {
+        background-color: #1259a6;
+      }
+
+      #map {
+        position: absolute;
+        bottom: 150px;
+        left: 10px;
+        width: 299px;
+        height: 585px;
+        z-index: 10;
+        border: 2px solid #ccc;
+        box-shadow: 0 0 8px rgba(0, 0, 0, 0.2);
+      }
+
+      #svgObject {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+
+  <body>
+
+    <script src="choices.js"></script>
+
+    <div id="ar-container">
+      <div id="routing-ui">
+        <select id="destinationDropdown" class="choices"></select>
+        <button onclick="routeToDestination()">Go</button>
+      </div>
+
+      <div id="map"></div>
+      <object id="svgObject" type="image/svg+xml" data="RDSC.svg"></object>
+    </div>
+
+    <!-- External scripts -->
+    <script src="svg.js"></script>
+    <script src="leaflet.js"></script>
+    <script src="ar-logic.js"></script>
+    <script src="MarkerHandler.js"></script>
+   
+
+    <!-- AR and marker setup -->
+    <script>
+      const start = async () => {
+        try {
+          const mindarThree = new window.MINDAR.IMAGE.MindARThree({
+            container: document.querySelector("#ar-container"),
+            imageTargetSrc: "./test.mind" // Ensure this includes multiple image targets
+          });
+
+          const { renderer, scene, camera } = mindarThree;
+          const totalTargets = 2; // Adjust to your number of markers
+          const anchors = [];
+
+          for (let i = 0; i < totalTargets; i++) {
+            const anchor = mindarThree.addAnchor(i);
+            anchors.push(anchor);
+
+            anchor.onTargetFound = () => {
+              console.log(`Target ${i} found`);
+              const event = new CustomEvent("targetFound", {
+                detail: { targetIndex: i }
+              });
+              document.dispatchEvent(event);
+            };
+
+            anchor.onTargetLost = () => {
+              console.log(`Target ${i} lost`);
+            };
+          }
+
+          await mindarThree.start();
+
+          renderer.setAnimationLoop(() => {
+            renderer.render(scene, camera);
+          });
+        } catch (error) {
+          console.error("Error starting MindAR:", error);
+        }
+      };
+
+      start();
+    </script>
+  </body>
+</html>
