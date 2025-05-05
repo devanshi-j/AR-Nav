@@ -126,3 +126,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // Start checking for nodes data
   checkForNodes();
 });
+
+window.routeToDestination = function() {
+  const dropdown = document.getElementById('destinationDropdown');
+  if (dropdown && dropdown.value) {
+      window.goTo(dropdown.value);
+  }
+};
