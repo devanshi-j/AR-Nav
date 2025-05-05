@@ -8,7 +8,6 @@ window.addEventListener("load", () => {
     const imageHeight = 450;
     const svgHeight = 450;
     const imageBounds = [[0, 0], [imageHeight, imageWidth]];
-
     L.imageOverlay('RDSC.jpg', imageBounds).addTo(map);
     map.fitBounds(imageBounds);
 
@@ -20,11 +19,14 @@ window.addEventListener("load", () => {
     let userMarker;
     let currentMarkerId = null;
     let pathLayers = [];
-    let arrowLayers = [];
+    // Keep track of AR objects for cleanup
+    let arPathObjects = [];
 
     function waitForGraph() {
-        if (window.extractedNodes && window.extractedNodes.length > 0 &&
-            window.extractedEdges && window.extractedEdges.length > 0) {
+        if (
+            window.extractedNodes && window.extractedNodes.length > 0 &&
+            window.extractedEdges && window.extractedEdges.length > 0
+        ) {
             const nodes = window.extractedNodes.map(n => ({
                 ...n,
                 x: n.x * scaleFactorX,
@@ -73,11 +75,13 @@ window.addEventListener("load", () => {
                 const result = dijkstra(currentMarkerId, targetNodeId);
                 if (result.path) {
                     drawPath(result.path);
-                    drawArrows(result.path);
+                    drawARPath(result.path);
                     console.log(`Shortest path from ${currentMarkerId} to ${targetNodeId}:`, result.path);
                     console.log("Total distance:", result.distance, "m");
+                    return result; // Return the result for other uses
                 } else {
                     console.warn("No path found.");
+                    return null;
                 }
             };
 
@@ -92,8 +96,12 @@ window.addEventListener("load", () => {
                 userMarker.setLatLng([match.y, match.x]);
                 userMarker.openPopup();
                 clearPath();
-                clearArrows();
+                clearARPath();
             };
+
+            // Auto-set initial location for testing
+            setTimeout(() => window.setUserLocation("Entrance"), 1000);
+            setTimeout(() => window.goTo("Entrance2"), 2000);
 
             // Pathfinding
             function dijkstra(start, end) {
@@ -144,63 +152,162 @@ window.addEventListener("load", () => {
                 pathLayers = [];
             }
 
-            function clearArrows() {
-                arrowLayers.forEach(mesh => {
-                    if (window.mindarScene && mesh) {
-                        window.mindarScene.remove(mesh);
-                        mesh.geometry.dispose();
-                        mesh.material.dispose();
-                    }
-                });
-                arrowLayers = [];
-            }
-
-            // Draw Leaflet polyline path
             function drawPath(path) {
                 clearPath();
+
                 for (let i = 0; i < path.length - 1; i++) {
                     const from = nodeMap[path[i]];
                     const to = nodeMap[path[i + 1]];
-                    const straight = L.polyline([[from.y, from.x], [to.y, to.x]], {
-                        color: 'green',
-                        weight: 4
-                    }).addTo(map);
-                    pathLayers.push(straight);
+                    const edge = window.extractedEdges.find(edge =>
+                        (edge.from === from.id && edge.to === to.id) ||
+                        (edge.from === to.id && edge.to === from.id)
+                    );
+
+                    if (edge && edge.controlPoints && edge.controlPoints.length === 2) {
+                        const cp1 = {
+                            x: edge.controlPoints[0].x * scaleFactorX,
+                            y: (svgHeight - edge.controlPoints[0].y) * scaleFactorY
+                        };
+                        const cp2 = {
+                            x: edge.controlPoints[1].x * scaleFactorX,
+                            y: (svgHeight - edge.controlPoints[1].y) * scaleFactorY
+                        };
+
+                        const latlngs = [];
+                        const steps = 20;
+                        for (let t = 0; t <= 1; t += 1 / steps) {
+                            const x = Math.pow(1 - t, 3) * from.x +
+                                3 * Math.pow(1 - t, 2) * t * cp1.x +
+                                3 * (1 - t) * Math.pow(t, 2) * cp2.x +
+                                Math.pow(t, 3) * to.x;
+
+                            const y = Math.pow(1 - t, 3) * from.y +
+                                3 * Math.pow(1 - t, 2) * t * cp1.y +
+                                3 * (1 - t) * Math.pow(t, 2) * cp2.y +
+                                Math.pow(t, 3) * to.y;
+
+                            latlngs.push([y, x]);
+                        }
+
+                        const curve = L.polyline(latlngs, { color: 'green', weight: 4 }).addTo(map);
+                        pathLayers.push(curve);
+                    } else {
+                        const straight = L.polyline([[from.y, from.x], [to.y, to.x]], { color: 'green', weight: 4 }).addTo(map);
+                        pathLayers.push(straight);
+                    }
                 }
             }
 
-            // Draw 3D arrows in Three.js (MindAR scene)
-            function drawArrows(path) {
-                clearArrows();
+            // Create Three.js objects for AR path
+            function drawARPath(path) {
+                clearARPath();
+                
                 if (!window.mindarScene) {
-                    console.warn("MindAR scene not available.");
+                    console.warn("MindAR scene not initialized");
                     return;
                 }
 
-                path.forEach((nodeId, index) => {
-                    if (index < path.length - 1) {
-                        const fromNode = nodeMap[nodeId];
-                        const toNode = nodeMap[path[index + 1]];
+                // Create a group for all path objects
+                const pathGroup = new THREE.Group();
+                window.mindarScene.add(pathGroup);
+                arPathObjects.push(pathGroup);
 
-                        const dir = new THREE.Vector3(toNode.x - fromNode.x, toNode.y - fromNode.y, 0);
-                        dir.normalize();
+                // Convert from 2D map coordinates to AR space
+                // This conversion will need tuning based on your scene scale
+                const AR_SCALE = 0.01; // Scale factor to convert from map units to AR units
+                const AR_HEIGHT = 0; // Height above the ground in AR space
 
-                        const geometry = new THREE.ConeGeometry(0.2, 0.5, 8);
-                        const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-                        const arrow = new THREE.Mesh(geometry, material);
-
-                        arrow.position.set(fromNode.x, fromNode.y, 0.2);
-                        arrow.lookAt(new THREE.Vector3(toNode.x, toNode.y, 0));
-
-                        window.mindarScene.add(arrow);
-                        arrowLayers.push(arrow);
-                    }
+                for (let i = 0; i < path.length - 1; i++) {
+                    const fromNode = nodeMap[path[i]];
+                    const toNode = nodeMap[path[i + 1]];
+                    
+                    // Calculate direction vector
+                    const dirVec = new THREE.Vector3(
+                        toNode.x - fromNode.x,
+                        0,
+                        toNode.y - fromNode.y  // y in 2D becomes z in 3D
+                    );
+                    
+                    // Normalize for direction
+                    dirVec.normalize();
+                    
+                    // Create arrow as cone geometry
+                    const arrowGeometry = new THREE.ConeGeometry(0.03, 0.1, 8);
+                    
+                    // Rotate to point in direction of travel
+                    arrowGeometry.rotateX(Math.PI / 2);
+                    
+                    const arrowMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                    const arrow = new THREE.Mesh(arrowGeometry, arrowMaterial);
+                    
+                    // Position at midpoint between nodes
+                    const midpoint = {
+                        x: (fromNode.x + toNode.x) / 2,
+                        y: (fromNode.y + toNode.y) / 2
+                    };
+                    
+                    arrow.position.set(
+                        midpoint.x * AR_SCALE, 
+                        AR_HEIGHT, 
+                        midpoint.y * AR_SCALE
+                    );
+                    
+                    // Make arrow point in the direction of the path
+                    arrow.lookAt(
+                        toNode.x * AR_SCALE,
+                        AR_HEIGHT,
+                        toNode.y * AR_SCALE
+                    );
+                    
+                    // Add to group
+                    pathGroup.add(arrow);
+                    
+                    // Add line between nodes
+                    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 3 });
+                    const lineGeometry = new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(fromNode.x * AR_SCALE, AR_HEIGHT, fromNode.y * AR_SCALE),
+                        new THREE.Vector3(toNode.x * AR_SCALE, AR_HEIGHT, toNode.y * AR_SCALE)
+                    ]);
+                    
+                    const line = new THREE.Line(lineGeometry, lineMaterial);
+                    pathGroup.add(line);
+                }
+                
+                // Position the path group properly in the AR scene
+                // You might need to adjust this based on your AR markers and desired positioning
+                pathGroup.position.set(0, 0, 0);
+                
+                // Event listener for when AR target is found
+                document.addEventListener("targetFound", (event) => {
+                    const targetIndex = event.detail.targetIndex;
+                    console.log(`Showing AR path for target ${targetIndex}`);
+                    
+                    // Here you could customize the path visibility based on which marker was found
+                    pathGroup.visible = true;
                 });
             }
+
+            function clearARPath() {
+                if (window.mindarScene) {
+                    arPathObjects.forEach(obj => {
+                        window.mindarScene.remove(obj);
+                        // Properly dispose of geometries and materials
+                        if (obj.children) {
+                            obj.children.forEach(child => {
+                                if (child.geometry) child.geometry.dispose();
+                                if (child.material) child.material.dispose();
+                            });
+                        }
+                    });
+                }
+                arPathObjects = [];
+            }
+
+            
         } else {
             setTimeout(waitForGraph, 100);
         }
     }
-
+    
     waitForGraph();
 });

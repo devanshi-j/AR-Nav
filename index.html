@@ -107,7 +107,7 @@
     <!-- External scripts -->
     <script src="svg.js"></script>
     <script src="leaflet.js"></script>
-    <script src="ar-logic.js"></script>
+    <!--<script src="ar-logic.js"></script>-->
     <script src="markerHandler.js"></script>
     <script src="choices.js"></script>
 
@@ -123,6 +123,7 @@
           });
 
           const { renderer, scene, camera } = mindarThree;
+          window.mindarScene = scene;
           const totalTargets = 2; // Adjust to your number of markers
           const anchors = [];
 

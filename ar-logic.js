@@ -112,7 +112,12 @@
 //         }
 
 //         // Helper function to draw AR arrows along the path
-//         function drawArrows(path) {
+        
+
+//         // Helper function to calculate rotation between two points
+//         function calculateRotation(fromNode, toNode) {
+//             const deltaX = toNode.x - fromNode.x;
+//             constfunction drawArrows(path) {
 //             clearArrows();
 //             path.forEach((nodeId, index) => {
 //                 if (index < path.length - 1) {
@@ -134,12 +139,7 @@
 //             arrow.setAttribute('position', position);
 
 //             document.querySelector('a-scene').appendChild(arrow);
-//         }
-
-//         // Helper function to calculate rotation between two points
-//         function calculateRotation(fromNode, toNode) {
-//             const deltaX = toNode.x - fromNode.x;
-//             const deltaY = toNode.y - fromNode.y;
+//         } deltaY = toNode.y - fromNode.y;
 //             const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI); // In degrees
 //             return angle;
 //         }
