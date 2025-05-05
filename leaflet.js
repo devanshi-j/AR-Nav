@@ -28,23 +28,22 @@ window.addEventListener("load", () => {
 
     // Initialize AR scene
     function initAR() {
-        if (!window.AFRAME || !window.AFRAME.scenes || !window.AFRAME.scenes[0]) {
-            console.warn("AFRAME not found or not initialized yet");
+        // For MindAR specifically
+        if (!window.mindarThree) {
+            console.warn("MindAR not found or not initialized yet");
             return false;
         }
         
         // Create a scene reference for MindAR if it doesn't exist
         if (!window.mindarScene) {
-            // Get the AR scene from A-Frame
-            const arScene = document.querySelector('a-scene');
-            if (!arScene) {
-                console.warn("A-Frame scene not found");
+            // Get the THREE.js scene from MindAR
+            if (window.mindarThree && window.mindarThree.scene) {
+                window.mindarScene = window.mindarThree.scene;
+                console.log("MindAR scene initialized:", window.mindarScene);
+            } else {
+                console.warn("MindAR scene not available");
                 return false;
             }
-            
-            // Get the THREE.js scene from A-Frame
-            window.mindarScene = arScene.object3D;
-            console.log("AR scene initialized:", window.mindarScene);
         }
         
         // Add an event listener for when AR targets are found
