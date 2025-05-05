@@ -145,43 +145,58 @@ window.addEventListener("load", () => {
             }
 
             function clearArrows() {
-                arrowLayers.forEach(layer => layer.parentNode.removeChild(layer));
+                arrowLayers.forEach(mesh => {
+                    if (window.mindarScene && mesh) {
+                        window.mindarScene.remove(mesh);
+                        mesh.geometry.dispose();
+                        mesh.material.dispose();
+                    }
+                });
                 arrowLayers = [];
             }
 
+            // Draw Leaflet polyline path
             function drawPath(path) {
                 clearPath();
                 for (let i = 0; i < path.length - 1; i++) {
                     const from = nodeMap[path[i]];
                     const to = nodeMap[path[i + 1]];
-
-                    const straight = L.polyline([[from.y, from.x], [to.y, to.x]], { color: 'green', weight: 4 }).addTo(map);
+                    const straight = L.polyline([[from.y, from.x], [to.y, to.x]], {
+                        color: 'green',
+                        weight: 4
+                    }).addTo(map);
                     pathLayers.push(straight);
                 }
             }
 
-            // Function to draw AR arrows
+            // Draw 3D arrows in Three.js (MindAR scene)
             function drawArrows(path) {
                 clearArrows();
+                if (!window.mindarScene) {
+                    console.warn("MindAR scene not available.");
+                    return;
+                }
+
                 path.forEach((nodeId, index) => {
                     if (index < path.length - 1) {
                         const fromNode = nodeMap[nodeId];
                         const toNode = nodeMap[path[index + 1]];
 
-                        const arrow = document.createElement('a-entity');
-                        const angle = Math.atan2(toNode.y - fromNode.y, toNode.x - fromNode.x);
-                        const position = `position: ${fromNode.x} ${fromNode.y} 0; rotation: 0 ${angle * (180 / Math.PI)} 0`;
+                        const dir = new THREE.Vector3(toNode.x - fromNode.x, toNode.y - fromNode.y, 0);
+                        dir.normalize();
 
-                        arrow.setAttribute('geometry', 'primitive: cone; height: 0.5; radiusBottom: 0.1');
-                        arrow.setAttribute('material', 'color: yellow');
-                        arrow.setAttribute('position', position);
+                        const geometry = new THREE.ConeGeometry(0.2, 0.5, 8);
+                        const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                        const arrow = new THREE.Mesh(geometry, material);
 
-                        document.querySelector('a-scene').appendChild(arrow);
+                        arrow.position.set(fromNode.x, fromNode.y, 0.2);
+                        arrow.lookAt(new THREE.Vector3(toNode.x, toNode.y, 0));
+
+                        window.mindarScene.add(arrow);
                         arrowLayers.push(arrow);
                     }
                 });
             }
-
         } else {
             setTimeout(waitForGraph, 100);
         }
