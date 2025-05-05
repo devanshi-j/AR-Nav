@@ -21,6 +21,54 @@ window.addEventListener("load", () => {
     let pathLayers = [];
     // Keep track of AR objects for cleanup
     let arPathObjects = [];
+    let arInitialized = false;
+
+    // Flag to indicate if AR is ready
+    window.arReady = false;
+
+    // Initialize AR scene
+    function initAR() {
+        if (!window.AFRAME || !window.AFRAME.scenes || !window.AFRAME.scenes[0]) {
+            console.warn("AFRAME not found or not initialized yet");
+            return false;
+        }
+        
+        // Create a scene reference for MindAR if it doesn't exist
+        if (!window.mindarScene) {
+            // Get the AR scene from A-Frame
+            const arScene = document.querySelector('a-scene');
+            if (!arScene) {
+                console.warn("A-Frame scene not found");
+                return false;
+            }
+            
+            // Get the THREE.js scene from A-Frame
+            window.mindarScene = arScene.object3D;
+            console.log("AR scene initialized:", window.mindarScene);
+        }
+        
+        // Add an event listener for when AR targets are found
+        document.addEventListener("targetFound", (event) => {
+            const targetIndex = event.detail.targetIndex;
+            console.log(`Target found: ${targetIndex}`);
+            
+            // Make sure the path is visible when a target is found
+            arPathObjects.forEach(obj => {
+                obj.visible = true;
+            });
+        });
+        
+        // Add an event listener for when AR targets are lost
+        document.addEventListener("targetLost", (event) => {
+            const targetIndex = event.detail.targetIndex;
+            console.log(`Target lost: ${targetIndex}`);
+        });
+        
+        arInitialized = true;
+        window.arReady = true;
+        console.log("AR initialized successfully");
+        return true;
+    }
 
     function waitForGraph() {
         if (
@@ -66,6 +114,24 @@ window.addEventListener("load", () => {
                 fillOpacity: 0.9
             }).addTo(map).bindPopup("You are here");
 
+            // Try to initialize AR
+            if (!arInitialized) {
+                // Try to initialize AR now
+                initAR();
+                
+                // Also set up a periodic check to initialize AR if not ready yet
+                const arCheckInterval = setInterval(() => {
+                    if (!arInitialized) {
+                        if (initAR()) {
+                            clearInterval(arCheckInterval);
+                            console.log("AR initialized after waiting");
+                        }
+                    } else {
+                        clearInterval(arCheckInterval);
+                    }
+                }, 1000);
+            }
+
             // Expose a global function to go to a destination
             window.goTo = function (targetNodeId) {
                 if (!currentMarkerId) {
@@ -75,7 +141,27 @@ window.addEventListener("load", () => {
                 const result = dijkstra(currentMarkerId, targetNodeId);
                 if (result.path) {
                     drawPath(result.path);
-                    drawARPath(result.path);
+                    
+                    // Try to draw AR path - if AR isn't ready yet, queue it up
+                    if (arInitialized) {
+                        drawARPath(result.path);
+                    } else {
+                        console.log("AR not ready, queueing AR path drawing");
+                        const pathToDisplay = result.path;
+                        const checkARAndDraw = setInterval(() => {
+                            if (arInitialized) {
+                                drawARPath(pathToDisplay);
+                                clearInterval(checkARAndDraw);
+                            }
+                        }, 1000);
+                        
+                        // Stop checking after 10 seconds
+                        setTimeout(() => {
+                            clearInterval(checkARAndDraw);
+                            console.warn("AR initialization timed out");
+                        }, 10000);
+                    }
+                    
                     console.log(`Shortest path from ${currentMarkerId} to ${targetNodeId}:`, result.path);
                     console.log("Total distance:", result.distance, "m");
                     return result; // Return the result for other uses
@@ -203,7 +289,7 @@ window.addEventListener("load", () => {
                 clearARPath();
                 
                 if (!window.mindarScene) {
-                    console.warn("MindAR scene not initialized");
+                    console.error("MindAR scene not initialized - cannot draw AR path");
                     return;
                 }
 
@@ -217,6 +303,8 @@ window.addEventListener("load", () => {
                 const AR_SCALE = 0.01; // Scale factor to convert from map units to AR units
                 const AR_HEIGHT = 0; // Height above the ground in AR space
 
+                console.log("Drawing AR path with", path.length, "nodes");
+                
                 for (let i = 0; i < path.length - 1; i++) {
                     const fromNode = nodeMap[path[i]];
                     const toNode = nodeMap[path[i + 1]];
@@ -273,18 +361,10 @@ window.addEventListener("load", () => {
                     pathGroup.add(line);
                 }
                 
-                // Position the path group properly in the AR scene
-                // You might need to adjust this based on your AR markers and desired positioning
-                pathGroup.position.set(0, 0, 0);
+                // Make sure the group is visible
+                pathGroup.visible = true;
                 
-                // Event listener for when AR target is found
-                document.addEventListener("targetFound", (event) => {
-                    const targetIndex = event.detail.targetIndex;
-                    console.log(`Showing AR path for target ${targetIndex}`);
-                    
-                    // Here you could customize the path visibility based on which marker was found
-                    pathGroup.visible = true;
-                });
+                console.log("AR path created with", pathGroup.children.length, "objects");
             }
 
             function clearARPath() {
@@ -303,6 +383,22 @@ window.addEventListener("load", () => {
                 arPathObjects = [];
             }
 
+            // Expose a function to manually initialize AR
+            window.initializeAR = function() {
+                return initAR();
+            };
+            
+            // Expose a function to check AR status
+            window.checkARStatus = function() {
+                console.log("AR initialized:", arInitialized);
+                console.log("AR ready:", window.arReady);
+                if (window.mindarScene) {
+                    console.log("AR scene exists with", window.mindarScene.children.length, "objects");
+                } else {
+                    console.log("AR scene does not exist");
+                }
+                console.log("AR path objects:", arPathObjects.length);
+            };
             
         } else {
             setTimeout(waitForGraph, 100);
